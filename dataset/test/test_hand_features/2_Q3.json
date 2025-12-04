@@ -1,0 +1,15 @@
+{
+    "dom_h": 0.5686274509803922,
+    "dom_s": 0.2615384615384615,
+    "dom_v": 0.5098039215686274,
+    "avg_intensity": 0.8948602676391602,
+    "std_intensity": 0.14767369627952576,
+    "center_intensity": 0.46665123105049133,
+    "periphery_intensity": 0.4755564332008362,
+    "center_periphery_ratio": 0.9812741421866455,
+    "inferior_superior_ratio": 1.0016179084777832,
+    "left_right_ratio": 0.991213858127594,
+    "diag1_difference": -0.0049818456172943115,
+    "diag2_difference": 0.003437131643295288,
+    "radial_symmetry": 0.013400733470916748
+}
