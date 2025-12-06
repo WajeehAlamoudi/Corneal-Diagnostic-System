@@ -7,9 +7,9 @@
     "center_intensity": 0.4382299780845642,
     "periphery_intensity": 0.4905828535556793,
     "center_periphery_ratio": 0.893284334966727,
-    "inferior_superior_ratio": 0.927168607711792,
+    "inferior_superior_ratio": 0.9271687269210815,
     "left_right_ratio": 0.9677694439888,
-    "diag1_difference": 0.020378589630126953,
-    "diag2_difference": 0.05155289173126221,
-    "radial_symmetry": 0.12348437309265137
+    "diag1_difference": 0.020378559827804565,
+    "diag2_difference": 0.05155295133590698,
+    "radial_symmetry": 0.12348434329032898
 }

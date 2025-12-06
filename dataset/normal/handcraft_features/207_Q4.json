@@ -3,13 +3,13 @@
     "dom_s": 0.9314516129032259,
     "dom_v": 0.9725490196078431,
     "avg_intensity": 0.9540109038352966,
-    "std_intensity": 0.11782196164131165,
-    "center_intensity": 0.6133745312690735,
-    "periphery_intensity": 0.5045068860054016,
-    "center_periphery_ratio": 1.2157902068010749,
-    "inferior_superior_ratio": 1.0358386039733887,
-    "left_right_ratio": 0.9825608730316162,
-    "diag1_difference": -0.02737051248550415,
+    "std_intensity": 0.11782195419073105,
+    "center_intensity": 0.6133744716644287,
+    "periphery_intensity": 0.5045069456100464,
+    "center_periphery_ratio": 1.2157899450179828,
+    "inferior_superior_ratio": 1.0358384847640991,
+    "left_right_ratio": 0.9825606346130371,
+    "diag1_difference": -0.027370572090148926,
     "diag2_difference": -0.00913327932357788,
-    "radial_symmetry": 0.06387436389923096
+    "radial_symmetry": 0.06387448310852051
 }

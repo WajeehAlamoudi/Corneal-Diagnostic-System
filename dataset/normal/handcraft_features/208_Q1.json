@@ -7,9 +7,9 @@
     "center_intensity": 0.48822492361068726,
     "periphery_intensity": 0.4511103630065918,
     "center_periphery_ratio": 1.0822737929510902,
-    "inferior_superior_ratio": 1.029866099357605,
-    "left_right_ratio": 0.957679808139801,
-    "diag1_difference": -0.03486505150794983,
-    "diag2_difference": 0.006623685359954834,
-    "radial_symmetry": 0.07635381817817688
+    "inferior_superior_ratio": 1.0298662185668945,
+    "left_right_ratio": 0.9576797485351562,
+    "diag1_difference": -0.034865111112594604,
+    "diag2_difference": 0.006623655557632446,
+    "radial_symmetry": 0.07635393738746643
 }

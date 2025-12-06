@@ -5,11 +5,11 @@
     "avg_intensity": 0.9408051371574402,
     "std_intensity": 0.11648992449045181,
     "center_intensity": 0.38328081369400024,
-    "periphery_intensity": 0.5132412314414978,
-    "center_periphery_ratio": 0.7467849233731892,
-    "inferior_superior_ratio": 0.9993383288383484,
-    "left_right_ratio": 0.9674988389015198,
-    "diag1_difference": -0.016301214694976807,
-    "diag2_difference": 0.016965746879577637,
-    "radial_symmetry": 0.050232648849487305
+    "periphery_intensity": 0.5132412910461426,
+    "center_periphery_ratio": 0.7467848366462426,
+    "inferior_superior_ratio": 0.9993382096290588,
+    "left_right_ratio": 0.967498779296875,
+    "diag1_difference": -0.01630118489265442,
+    "diag2_difference": 0.016965657472610474,
+    "radial_symmetry": 0.05023261904716492
 }

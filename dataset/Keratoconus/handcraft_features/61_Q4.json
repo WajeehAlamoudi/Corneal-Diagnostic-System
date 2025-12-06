@@ -2,14 +2,14 @@
     "dom_h": 0.7982456140350878,
     "dom_s": 0.30399999999999994,
     "dom_v": 0.49019607843137253,
-    "avg_intensity": 0.7451366782188416,
+    "avg_intensity": 0.7451367378234863,
     "std_intensity": 0.19966165721416473,
-    "center_intensity": 0.48009389638900757,
+    "center_intensity": 0.48009395599365234,
     "periphery_intensity": 0.4406258165836334,
-    "center_periphery_ratio": 1.0895727810762148,
-    "inferior_superior_ratio": 1.0161620378494263,
-    "left_right_ratio": 1.0046424865722656,
-    "diag1_difference": -0.005139827728271484,
+    "center_periphery_ratio": 1.0895729163489167,
+    "inferior_superior_ratio": 1.0161619186401367,
+    "left_right_ratio": 1.004642367362976,
+    "diag1_difference": -0.005139857530593872,
     "diag2_difference": -0.009317904710769653,
-    "radial_symmetry": 0.023775756359100342
+    "radial_symmetry": 0.023775696754455566
 }
