@@ -1,3 +1,7 @@
+import time
+from pathlib import Path
+from typing import Union, Dict, List
+
 import numpy as np
 import json
 import colorsys
@@ -5,6 +9,13 @@ import cv2
 import os
 import torch
 from colorthief import ColorThief
+from PIL import Image
+from transformers import ViTModel, ViTImageProcessor
+from xgboost import XGBClassifier
+import joblib
+from google import genai
+from google.genai import types
+from google.genai.errors import APIError
 
 
 class VisionModule:
@@ -369,3 +380,341 @@ class VisionModule:
                 json.dump(features, f, indent=4)
 
         return features
+
+
+class TextModule:
+
+    def __init__(self, model_name="google/vit-base-patch16-224-in21k", device=None):
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = torch.device(device)
+
+        # Load transformer
+        self.processor = ViTImageProcessor.from_pretrained(model_name)
+        self.model = ViTModel.from_pretrained(model_name).to(self.device)
+        self.model.eval()
+
+    def extract_transformer_features(self, img_path: str, save_dir=None, img_name=None, quadrant=None):
+
+        img = Image.open(img_path).convert("RGB")
+
+        # Preprocess
+        inputs = self.processor(images=img, return_tensors="pt").to(self.device)
+
+        # Forward pass
+        with torch.no_grad():
+            out = self.model(**inputs)
+
+        # CLS token embedding
+        vec = out.pooler_output.squeeze(0).cpu().numpy()
+
+        # --------------------------------------------------------
+        # Conditional saving (ONLY IF save_dir is provided)
+        # --------------------------------------------------------
+        if save_dir is not None:
+            os.makedirs(save_dir, exist_ok=True)
+
+            # build file name
+            if img_name is None:
+                # default: use last component of img_path
+                img_name = os.path.splitext(os.path.basename(img_path))[0]
+
+            if quadrant is not None:
+                file_name = f"{img_name}_{quadrant}.npy"
+            else:
+                file_name = f"{img_name}.npy"
+
+            save_path = os.path.join(save_dir, file_name)
+
+            # save the vector
+            np.save(save_path, vec)
+
+        # return vector always
+        return vec
+
+
+class XGBoostTrainer:
+    def __init__(self, dataset_root="dataset"):
+        self.dataset_root = dataset_root
+        self.classes = ["normal", "Keratoconus"]
+
+    def load_quadrant_features(self, class_dir, img_id, quadrant):
+
+        # ---------------------------
+        # Paths
+        # ---------------------------
+        deep_pth = os.path.join(class_dir, "deep_features", f"{img_id}_{quadrant}.npy")
+        hand_pth = os.path.join(class_dir, "handcraft_features", f"{img_id}_{quadrant}.json")
+        trans_pth = os.path.join(class_dir, "transformer_features", f"{img_id}_{quadrant}.npy")
+
+        # Must exist
+        if not (os.path.exists(deep_pth) and os.path.exists(hand_pth) and os.path.exists(trans_pth)):
+            return None
+
+        # ---------------------------
+        # Deep features
+        # ---------------------------
+        deep_vec = np.load(deep_pth).astype(np.float32)
+
+        # ---------------------------
+        # Handcrafted features (JSON → full concatenation)
+        # ---------------------------
+        with open(hand_pth, "r") as f:
+            hand_dict = json.load(f)
+
+        # flatten ALL handcrafted values into correct order
+        hand_vec = np.array([v for _, v in hand_dict.items()], dtype=np.float32)
+
+        # ---------------------------
+        # Transformer features
+        # ---------------------------
+        trans_vec = np.load(trans_pth).astype(np.float32)
+
+        # ---------------------------
+        # CONCAT ALL THREE MODALITIES
+        # ---------------------------
+        fused = np.concatenate([deep_vec, hand_vec, trans_vec], axis=0)
+
+        return fused
+
+    def build_dataset(self):
+
+        X = []
+        y = []
+
+        for label_idx, cls_name in enumerate(self.classes):
+
+            class_dir = os.path.join(self.dataset_root, cls_name)
+            crops_dir = os.path.join(class_dir, "crops")
+
+            # get image ids from crops folder
+            img_files = [f for f in os.listdir(crops_dir) if "_Q1" in f]
+            img_ids = [f.split("_")[0] for f in img_files]
+
+            for img_id in img_ids:
+
+                quadrant_vectors = []
+
+                for q in ["Q1", "Q2", "Q3", "Q4"]:
+                    vec = self.load_quadrant_features(class_dir, img_id, q)
+                    if vec is not None:
+                        quadrant_vectors.append(vec)
+
+                if len(quadrant_vectors) == 0:
+                    print(f"[WARN] Skipping {img_id}, missing features.")
+                    continue
+
+                # OPTION 1: AVERAGE QUADRANTS (recommended)
+                fused_vec = np.mean(quadrant_vectors, axis=0)
+
+                # OPTION 2: CONCATENATE ALL QUADRANTS (HUGE VECTOR)
+                # fused_vec = np.concatenate(quadrant_vectors, axis=0)
+
+                X.append(fused_vec)
+                y.append(label_idx)
+
+        X = np.array(X, dtype=np.float32)
+        y = np.array(y, dtype=np.int32)
+
+        print("[INFO] Dataset shape:", X.shape, "Labels:", y.shape)
+        return X, y
+
+    def train(self, save_path="xgboost_model.pkl", n_estimators=200, depth=5, lr=0.05):
+
+        X, y = self.build_dataset()
+
+        model = XGBClassifier(
+            n_estimators=n_estimators,
+            max_depth=depth,
+            learning_rate=lr,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            objective="binary:logistic",
+            eval_metric="logloss"
+        )
+
+        print("[INFO] Training XGBoost...")
+        model.fit(X, y)
+
+        joblib.dump(model, save_path)
+        print(f"[INFO] Model saved to: {save_path}")
+
+        return model
+
+
+class GEMINIAGENT:
+
+    def __init__(self, api_key: str, system_message: str = None, model: str = None):
+        """Initializes the Gemini client and chat session."""
+        print(f"Initializing GEMINIAGENT chat for model {model}.")
+
+        self.model = model
+        self.system_message = system_message
+        self.history = []  # types.Content objects will be managed by the chat session.
+        self.last_usage_metadata = None  # For token usage retrieval
+        self.chat_session = None
+
+        try:
+            # 1. Initialization: Client setup uses the API key
+            self.client = genai.Client(api_key=api_key)
+
+            # Optional: Verify API key by listing models (similar to OpenAI logic)
+            # The genai client does not have a simple 'models.list()'. A simple call
+            # with a quick timeout can serve as a proxy for key validation.
+            # For simplicity, we skip this complex step but rely on the subsequent
+            # chat creation to validate the key and connection.
+
+            # 2. Chat Session Creation: This is where conversation history is managed
+            # The system instruction is part of the initial config.
+            config = None
+            if self.system_message:
+                config = types.GenerateContentConfig(
+                    system_instruction=self.system_message
+                )
+
+            self.chat_session = self.client.chats.create(
+                model=self.model,
+                config=config,
+            )
+
+            print(f"GEMINIAGENT initialized successfully for model {model}.")
+
+        except APIError as e:
+            print("Failed to initialize Gemini client", e)
+            raise ValueError(f"Invalid or unauthorized API key or connection error: {e}") from e
+        except Exception as e:
+            print("Unexpected error during GEMINIAGENT initialization", e)
+            raise ValueError(f"Unexpected error while initializing client: {e}") from e
+
+    def ask(self, user_input: Union[str, Dict[str, Union[str, List[str]]]], response_type: str = None) -> str:
+        """Sends a message to the model and returns the text response."""
+
+        if not user_input:
+            raise ValueError("ask agent failed: Please enter a valid user_input.")
+
+        # 1. Build the 'contents' list (list of Parts)
+        parts: List[types.Part] = []
+
+        # 🔹 Handle text + image multimodal input
+        if isinstance(user_input, dict) and "prompt" in user_input:
+            # expected format: {"prompt": "...", "images": ["img1.png", "img2.jpg"]}
+
+            # Add text part
+            parts.append(types.Part(text=user_input["prompt"]))
+
+            # Add image parts (using local file paths)
+            for img_path in user_input.get("images", []):
+                path = Path(img_path)
+                if not path.exists():
+                    raise FileNotFoundError(f"Image not found: {img_path}")
+
+                # Determine MIME type
+                mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+                mime = mime_map.get(path.suffix.lower(), "application/octet-stream")
+
+                with open(path, "rb") as f:
+                    image_bytes = f.read()
+
+                # Use Part.from_bytes for local image files
+                parts.append(types.Part.from_bytes(
+                    data=image_bytes,
+                    mime_type=mime
+                ))
+
+        else:
+            # Handle text-only input
+            parts.append(types.Part(text=user_input))
+
+        # 2. Configure the generation request
+        config = types.GenerateContentConfig()
+
+        # 3. Handle JSON/Structured Output request
+        if response_type == "json_object":
+            # Gemini uses response_mime_type for JSON output
+            # A schema can also be provided, but for simple JSON_OBJECT, this is the minimal change
+            config.response_mime_type = "application/json"
+
+        # 'json_schema' is a more complex case involving response_schema and is omitted for brevity,
+        # but would map to types.GenerateContentConfig(response_schema=...)
+
+        # 4. Send the message
+        try:
+            # Check if the config has been modified for JSON output
+            is_config_modified = (
+                    hasattr(config, "response_mime_type") and
+                    config.response_mime_type == "application/json"
+            )
+
+            # Build keyword arguments for the send_message call
+            request_kwargs = {}
+            if is_config_modified:
+                request_kwargs["config"] = config
+
+            # Pass the content (parts) and any configuration
+            response = self.chat_session.send_message(
+                parts,  # Pass the message content
+                **request_kwargs  # Pass the config if present
+            )
+
+            reply = response.text.strip()
+
+            # Save token usage metadata
+            self.last_usage_metadata = response.usage_metadata
+
+            print(f"GEMINIAGENT.ask() completed successfully with reply length {len(reply)} chars.")
+            return reply
+
+        except APIError as e:
+            time.sleep(35)
+            # Handle context length exceeded specifically
+            # Gemini's APIError will contain context limits, but a universal retry is more complex
+            # than the OpenAI one. The most direct equivalent is to clear and re-raise.
+            if "context_length" in str(e).lower() or "quota" in str(e).lower():
+                # self.clear_conversation_history()
+                # time.sleep(5)
+                # # Re-send the *current* user input, which includes the multimodal handling logic above.
+                # return self.ask(user_input=user_input, response_type=response_type)
+                raise ValueError(f"Gemini Context length or quota issue detected: {e}") from e
+            else:
+                raise ValueError(f"Gemini chat completion failed: {e}") from e
+
+        except Exception as e:
+            time.sleep(35)
+            raise ValueError(f"Unexpected error during chat completion: {e}") from e
+
+    def clear_conversation_history(self):
+        """Clear the conversation history by recreating the chat session."""
+        print("Clearing GEMINIAGENT conversation history...")
+
+        old_length = len(self.chat_session.get_history())
+        print(f"Previous conversation length: {old_length} message(s).")
+
+        # Reset by creating a new chat session with the original model and config
+        config = types.GenerateContentConfig(system_instruction=self.system_message) if self.system_message else None
+        self.chat_session = self.client.chats.create(
+            model=self.model,
+            config=config,
+        )
+
+        print("Conversation history cleared successfully.")
+
+    def get_token_usage(self):
+        """
+        Return token usage from the last API call using usage_metadata.
+        Returns (prompt_tokens, completion_tokens, total_tokens) or None if unavailable.
+        """
+        print("Entering GEMINIAGENT.get_token_usage()")
+
+        if self.last_usage_metadata:
+            # The GenAI SDK returns tokens under 'usage_metadata'
+            prompt = self.last_usage_metadata.prompt_token_count or 0
+            completion = self.last_usage_metadata.candidates_token_count or 0
+            total = self.last_usage_metadata.total_token_count or 0
+
+            print(
+                f"Token usage retrieved: prompt={prompt}, completion={completion}, total={total}"
+            )
+            return prompt, completion, total
+
+        print("No token usage data available in GEMINIAGENT.")
+        return None
